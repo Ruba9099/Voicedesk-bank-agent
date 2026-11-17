@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VoiceDesk Bank Agent</title>
+<style>
+  :root { --bg:#0f172a; --card:#1e293b; --muted:#94a3b8; --text:#e2e8f0; --accent:#38bdf8; --ok:#34d399; --warn:#fbbf24; --bad:#f87171; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, sans-serif; background:var(--bg); color:var(--text); }
+  header { padding:16px 24px; border-bottom:1px solid #334155; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
+  header h1 { font-size:18px; margin:0; } header small { color:var(--muted); }
+  main { display:grid; grid-template-columns: 1.2fr 1fr; gap:16px; padding:16px 24px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  section { background:var(--card); border-radius:12px; padding:16px; }
+  h2 { font-size:14px; margin:0 0 12px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
+  button { background:var(--accent); color:#0b1220; border:0; border-radius:8px; padding:8px 14px; font-weight:600; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--text); border:1px solid #475569; }
+  button.bad { background:var(--bad); } button:disabled { opacity:.45; cursor:not-allowed; }
+  input[type=text], input[type=password] { background:#0b1220; color:var(--text); border:1px solid #334155; border-radius:8px; padding:9px 12px; width:100%; }
+  .row { display:flex; gap:8px; margin-top:10px; align-items:center; flex-wrap:wrap; }
+  #chat { height:320px; overflow:auto; background:#0b1220; border-radius:8px; padding:10px; }
+  .msg { margin:6px 0; padding:8px 10px; border-radius:8px; max-width:88%; line-height:1.35; }
+  .agent { background:#0c4a6e; } .caller { background:#14532d; margin-left:auto; } .sys { color:var(--muted); font-size:12px; text-align:center; }
+  .pill { display:inline-block; padding:2px 8px; border-radius:99px; font-size:12px; background:#334155; margin-right:6px; }
+  .pill.ok { background:#065f46; } .pill.warn { background:#78350f; } .pill.bad { background:#7f1d1d; }
+  #events { height:190px; overflow:auto; font:12px ui-monospace, monospace; background:#0b1220; border-radius:8px; padding:8px; }
+  .hint { color:var(--muted); font-size:12px; margin-top:8px; line-height:1.5; }
+  table { width:100%; border-collapse:collapse; font-size:13px; } td,th { padding:6px 4px; text-align:left; border-bottom:1px solid #334155; }
+</style>
+</head>
+<body>
+<header>
+  <div><h1>VoiceDesk Bank Agent <span class="pill" id="demo">DEMO</span></h1><small id="bank">loading…</small></div>
+  <div><span class="pill" id="callStatus">no call</span><span class="pill" id="callHandler"></span><span class="pill" id="callAuth"></span></div>
+</header>
+<main>
+  <section>
+    <h2>Call simulator</h2>
+    <div class="row">
+      <button id="callBtn">📞 Call the bank</button>
+      <button id="micBtn" class="ghost" disabled>🎤 Hold to talk</button>
+      <button id="hangBtn" class="bad" disabled>Hang up</button>
+      <label class="hint"><input type="checkbox" id="speak" checked> speak replies</label>
+    </div>
+    <div id="chat" style="margin-top:10px"></div>
+    <div class="row"><input type="text" id="msg" placeholder="…or type what you would say, then press Enter" disabled></div>
+    <p class="hint">Try: <i>“I want to block my card”</i>, <i>“what is my balance”</i>, <i>“change my pin”</i>, <i>“register a complaint”</i>.
+      Demo customer: CNIC <b>35202-1234567-1</b>, date of birth <b>15 March 1990</b> (fictional).
+      Voice input uses your browser’s speech recognition (Chrome/Edge); typing always works.</p>
+  </section>
+  <section>
+    <h2>Operator desk &amp; live events (admin)</h2>
+    <input type="password" id="key" placeholder="API key (default for local demo: change-me)">
+    <div class="row"><button id="connectBtn" class="ghost">Connect dashboard</button></div>
+    <table style="margin-top:10px"><thead><tr><th>Operator</th><th>Status</th><th>Set</th></tr></thead><tbody id="ops"></tbody></table>
+    <p class="hint">Make an operator <b>available</b> and then call: the call rings the operator first. If nobody answers
+      within the ring timeout (or all operators are busy/offline) the agent takes over automatically.</p>
+    <h2 style="margin-top:14px">Pub/sub event feed</h2>
+    <div id="events"></div>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let callId = null, pollTimer = null, seen = 0, ws = null;
+
+const addMsg = (cls, text) => { const d = document.createElement('div'); d.className = 'msg ' + cls; d.textContent = text; $('chat').appendChild(d); $('chat').scrollTop = 1e9; };
+const api = async (path, opts = {}) => {
+  const r = await fetch(path, { headers: { 'Content-Type': 'application/json', ...(opts.admin ? { 'X-API-Key': $('key').value } : {}) }, ...opts });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.detail || r.statusText);
+  return data;
+};
+const speak = (text) => { if (!$('speak').checked || !('speechSynthesis' in window)) return; speechSynthesis.cancel(); speechSynthesis.speak(new SpeechSynthesisUtterance(text)); };
+const setStatus = (d) => {
+  $('callStatus').textContent = d.status; $('callStatus').className = 'pill ' + (d.status === 'ended' ? 'bad' : 'ok');
+  $('callHandler').textContent = d.handler; $('callAuth').textContent = d.authenticated ? 'verified' : 'not verified';
+  $('callAuth').className = 'pill ' + (d.authenticated ? 'ok' : 'warn');
+  const live = d.status !== 'ended'; $('msg').disabled = !live; $('hangBtn').disabled = !live; $('micBtn').disabled = !live; $('callBtn').disabled = live;
+};
+const handleTurn = (d) => { addMsg('agent', d.reply_text); speak(d.reply_speech); setStatus(d); if (d.status === 'ringing_operator') startPolling(); if (d.end_call) stopPolling(); };
+
+async function startPolling() {
+  stopPolling();
+  pollTimer = setInterval(async () => {
+    try {
+      const d = await api('/api/v1/calls/' + callId);
+      const fresh = d.transcript.filter(t => t.id > seen && t.speaker === 'agent');
+      d.transcript.forEach(t => { seen = Math.max(seen, t.id); });
+      if (d.status !== 'ringing_operator') { stopPolling(); fresh.forEach(t => addMsg('agent', t.text)); if (fresh.length) speak(fresh[fresh.length - 1].text); }
+      setStatus({ ...d, authenticated: d.authenticated });
+    } catch (e) { stopPolling(); }
+  }, 1500);
+}
+const stopPolling = () => { if (pollTimer) clearInterval(pollTimer); pollTimer = null; };
+
+$('callBtn').onclick = async () => {
+  $('chat').innerHTML = ''; seen = 0;
+  try {
+    const d = await api('/api/v1/calls', { method: 'POST', body: JSON.stringify({ caller_phone: '+923001234567' }) });
+    callId = d.call_id; addMsg('sys', 'Call connected'); handleTurn(d);
+    const info = await api('/api/v1/calls/' + callId); info.transcript.forEach(t => { seen = Math.max(seen, t.id); });
+  } catch (e) { addMsg('sys', 'Error: ' + e.message); }
+};
+async function send(text) {
+  if (!text.trim() || !callId) return; addMsg('caller', text);
+  try { handleTurn(await api(`/api/v1/calls/${callId}/message`, { method: 'POST', body: JSON.stringify({ text }) })); }
+  catch (e) { addMsg('sys', e.message); }
+}
+$('msg').addEventListener('keydown', (e) => { if (e.key === 'Enter') { const t = $('msg').value; $('msg').value = ''; send(t); } });
+$('hangBtn').onclick = async () => { await api(`/api/v1/calls/${callId}/end`, { method: 'POST' }); addMsg('sys', 'Call ended'); stopPolling(); setStatus({ status: 'ended', handler: '', authenticated: false }); };
+
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (SR) {
+  const rec = new SR(); rec.lang = 'en-US'; rec.interimResults = false;
+  rec.onresult = (e) => send(e.results[0][0].transcript);
+  $('micBtn').onmousedown = $('micBtn').ontouchstart = () => { speechSynthesis.cancel(); try { rec.start(); } catch (_) {} };
+  $('micBtn').onmouseup = $('micBtn').ontouchend = () => { try { rec.stop(); } catch (_) {} };
+} else { $('micBtn').title = 'Speech recognition not supported in this browser; use the text box.'; }
+
+async function loadOps() {
+  try {
+    const ops = await api('/api/v1/operators', { admin: true });
+    $('ops').innerHTML = ops.map(o => `<tr><td>${o.name}</td><td><span class="pill ${o.status === 'available' ? 'ok' : o.status === 'ringing' ? 'warn' : ''}">${o.status}</span></td>
+      <td>${['available', 'busy', 'offline'].map(s => `<button class="ghost" onclick="setOp(${o.id},'${s}')">${s}</button>`).join(' ')}</td></tr>`).join('');
+  } catch (e) { $('ops').innerHTML = `<tr><td colspan=3>${e.message}</td></tr>`; }
+}
+window.setOp = async (id, status) => { try { await api(`/api/v1/operators/${id}/status`, { method: 'PUT', admin: true, body: JSON.stringify({ status }) }); } catch (e) { alert(e.message); } loadOps(); };
+$('connectBtn').onclick = () => {
+  loadOps(); if (ws) ws.close();
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/events?key=' + encodeURIComponent($('key').value));
+  ws.onmessage = (m) => { const e = JSON.parse(m.data); const d = document.createElement('div'); d.textContent = `${e.timestamp.slice(11, 19)}  ${e.topic}  ${JSON.stringify(e.payload)}`; $('events').prepend(d); if (e.topic.startsWith('operator') || e.topic.startsWith('call.')) loadOps(); };
+  ws.onclose = () => { const d = document.createElement('div'); d.textContent = 'dashboard disconnected'; $('events').prepend(d); };
+};
+api('/api/v1/info').then(i => { $('bank').textContent = `${i.bank_name} · helpline ${i.phone}`; $('demo').style.display = i.demo ? '' : 'none'; });
+</script>
+</body>
+</html>

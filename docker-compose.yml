@@ -1,0 +1,39 @@
+services:
+  api:
+    build: .
+    image: voicedesk-bank-agent:latest
+    container_name: voicedesk-api
+    ports:
+      - "8000:8000"
+    # .env is optional. Without it the demo defaults below are used.
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: ${DATABASE_URL_OVERRIDE:-sqlite:////data/voicedesk.db}
+      API_KEY: ${API_KEY:-change-me}
+      CNIC_PEPPER: ${CNIC_PEPPER:-change-me-pepper}
+    volumes:
+      - voicedesk-data:/data
+    restart: unless-stopped
+
+  # Optional MySQL: docker compose --profile mysql up --build
+  # then set DATABASE_URL_OVERRIDE=mysql+pymysql://voicedesk:CHANGE_ME@db:3306/voicedesk
+  db:
+    image: mysql:8.4
+    profiles: ["mysql"]
+    environment:
+      MYSQL_DATABASE: voicedesk
+      MYSQL_USER: voicedesk
+      MYSQL_PASSWORD: CHANGE_ME
+      MYSQL_ROOT_PASSWORD: CHANGE_ME_ROOT
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+      interval: 10s
+      retries: 10
+
+volumes:
+  voicedesk-data:
+  mysql-data:

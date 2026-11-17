@@ -1,0 +1,21 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+# Demo deployment. SQLite lives on the container disk, so data resets on every
+# deploy/restart (fine for a portfolio demo; use a managed database for real use).
+services:
+  - type: web
+    name: voicedesk-bank-agent
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: API_KEY
+        generateValue: true
+      - key: CNIC_PEPPER
+        generateValue: true
+      - key: SEED_DEMO_DATA
+        value: "true"
+      - key: DEMO_MODE
+        value: "true"
+      - key: DATABASE_URL
+        value: sqlite:////data/voicedesk.db
