@@ -1,0 +1,23 @@
+# AWS / any VPS overlay: adds automatic HTTPS in front of the API.
+#   docker compose -f docker-compose.yml -f docker-compose.aws.yml up -d --build
+# Requires DOMAIN in .env (run scripts/make_env.sh). Open ports 80 and 443 only; keep 8000 closed.
+services:
+  caddy:
+    image: caddy:2
+    container_name: voicedesk-caddy
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env (run scripts/make_env.sh)}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  caddy-data:
+  caddy-config:

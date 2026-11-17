@@ -134,7 +134,7 @@ All settings are environment variables (see [.env.example](.env.example)). Impor
 
 ## Roadmap & documentation
 
-[Product brief](docs/PRODUCT_BRIEF.md) · [Roadmap](docs/ROADMAP.md) · [Architecture](docs/ARCHITECTURE.md) · [API](docs/API.md) · [Conversation flows](docs/CONVERSATION_FLOWS.md) · [Testing](docs/TESTING.md) · [Deployment](docs/DEPLOYMENT.md) · [LinkedIn post draft](docs/LINKEDIN_POST.md)
+[Product brief](docs/PRODUCT_BRIEF.md) · [Roadmap](docs/ROADMAP.md) · [Architecture](docs/ARCHITECTURE.md) · [API](docs/API.md) · [Conversation flows](docs/CONVERSATION_FLOWS.md) · [Testing](docs/TESTING.md) · [Deployment](docs/DEPLOYMENT.md) · [AWS deployment](docs/AWS_DEPLOYMENT.md) · [LinkedIn post draft](docs/LINKEDIN_POST.md)
 
 ## License
 

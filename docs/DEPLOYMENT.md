@@ -28,6 +28,9 @@ MySQL (optional): `docker compose --profile mysql up --build` with `DATABASE_URL
 
 Notes: the free tier sleeps when idle (first request is slow); SQLite on the container disk resets on each deploy, which is fine for a demo. Browser microphone input needs HTTPS, which Render provides. Any host that runs a Docker image works the same way (Railway, Fly.io, a VPS).
 
+## 3b. AWS (EC2 + Docker Compose + automatic HTTPS)
+Always-on alternative to Render, with a persistent database volume and working WebSockets. Full guide: [AWS_DEPLOYMENT.md](AWS_DEPLOYMENT.md).
+
 ## 4. Real phone number (optional)
 1. Set `PUBLIC_BASE_URL=https://<your-url>` and `TWILIO_AUTH_TOKEN`.
 2. In Twilio, set the number's *A call comes in* webhook to `POST https://<your-url>/telephony/incoming`.

@@ -1,0 +1,6 @@
+# Caddy reverse proxy with automatic HTTPS (Let's Encrypt).
+# DOMAIN comes from .env (see scripts/make_env.sh). WebSockets are proxied automatically.
+{$DOMAIN} {
+	encode gzip
+	reverse_proxy api:8000
+}
